@@ -3982,7 +3982,7 @@ async def main():
                 admin_str = " yoki ".join(admin_links) if admin_links else "Admin"
                 await event.respond(
                     f"😕 **Namuna maqul kelmadi?**\n\n"
-                    f"Muammo bo'lsa {admin_str} ga murojaat qiling — yordam beramiz!\n\n"
+                    f"Muammo bo'lsa @ksh247 ga murojaat qiling — yordam beramiz!\n\n"
                     f"Yoki fayl formatini tekshirib qaytadan yuboring.",
                     buttons=main_menu(is_admin(uid), uid)
                 )
@@ -4938,7 +4938,7 @@ async def main():
             f"💳 **CLICK orqali to'lov**\n\n"
             f"💰 Hozirgi balans: **{bal:,} so'm**\n\n"
             f"Qancha to'lamoqchisiz? (so'mda yozing)\n"
-            f"_Masalan: 10000_",
+            f"👇👇👇👇👇",
             buttons=[[Button.text("🔙 Bosh menyu")]]
         )
 
@@ -4992,7 +4992,7 @@ async def main():
         try:
             amount = int(re.sub(r'[^\d]', '', text))
         except Exception:
-            await event.respond("❌ Noto'g'ri format! Faqat raqam yozing:\n_Masalan: 10000_")
+            await event.respond("Masalan: 10000")
             return
 
         if amount < 1000:
@@ -5531,7 +5531,7 @@ async def main():
                 f"\u2705 **Namuna yuborildi!**\n\n"
                 f"\U0001F4C2 {q_count} ta savol topildi\n"
                 f"\U0001F4B0 -{price:,} so'm | Balans: {bal_left:,} so'm\n\n"
-                f"Fan nomini yozing:",
+                f"Quiz nomini yozing: \nmasalan: yakuniy savollari",
                 buttons=[[Button.text("\U0001F519 Bosh menyu")]]
             )
         else:
