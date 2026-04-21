@@ -3191,8 +3191,30 @@ async def main():
             if fname.endswith(".docx") or "officedocument.wordprocessingml" in mime:
                 try:
                     from docx import Document
-                    doc = Document(io.BytesIO(data))
-                    content = "\n".join(p.text for p in doc.paragraphs)
+
+                    def _read_docx_text(blob: bytes) -> str:
+                        doc = Document(io.BytesIO(blob))
+                        parts = []
+
+                        for p in doc.paragraphs:
+                            t = (p.text or "").strip()
+                            if t:
+                                parts.append(t)
+
+                        for table in doc.tables:
+                            for row in table.rows:
+                                for cell in row.cells:
+                                    cell_text = "\n".join(
+                                        (pp.text or "").strip()
+                                        for pp in cell.paragraphs
+                                        if (pp.text or "").strip()
+                                    ).strip()
+                                    if cell_text:
+                                        parts.append(cell_text)
+
+                        return "\n".join(parts).strip()
+
+                    content = _read_docx_text(data)
                     log.info(f"DOCX o'qildi: {len(content)} belgi")
                 except Exception as e:
                     log.error(f"DOCX xato: {e}")
@@ -4796,87 +4818,111 @@ async def main():
     #  PARSER (ichki)
     # ============================================================
     def _parse_questions(text: str) -> list:
-        text = text.strip()
+        text = (text or "").replace("\ufeff", "").strip()
 
-        # Ajratgich satrlarni aniqlash
         def is_separator(s: str) -> bool:
-            """===== yoki +++++ yoki --- kabi satrlar"""
-            return bool(re.match(r'^[=+\-_*]{3,}$', s.strip()))
+            """====, ++++, ----- kabi satrlar"""
+            return bool(re.match(r'^[=+\-_*]{3,}$', (s or '').strip()))
 
-        if "=====" in text and "+++++" in text:
+        def clean_line(s: str) -> str:
+            return (s or '').replace('\xa0', ' ').strip()
+
+        if re.search(r'={4,}', text) and re.search(r'\+{4,}', text):
             qs = []
-            for block in re.split(r'\+{3,}', text):
+            for block in re.split(r'\+{4,}', text):
                 block = block.strip()
-                if not block: continue
-                parts = re.split(r'={3,}', block, maxsplit=1)
-                if len(parts) < 2: continue
-                q_text = parts[0].strip()
-                # Ajratgich satrlarni o'tkazib yuborish
+                if not block:
+                    continue
+
+                parts = re.split(r'={4,}', block, maxsplit=1)
+                if len(parts) < 2:
+                    continue
+
+                q_text = clean_line(parts[0])
                 opts_raw = [
-                    l.strip() for l in parts[1].strip().splitlines()
-                    if l.strip() and not is_separator(l.strip())
+                    clean_line(l) for l in parts[1].splitlines()
+                    if clean_line(l) and not is_separator(clean_line(l))
                 ]
-                if not q_text or not opts_raw: continue
-                options, correct, idx = [], 0, 0
-                for opt in opts_raw:
-                    if opt.startswith("#"):
-                        correct = idx; options.append(opt[1:].strip())
+
+                if not q_text or not opts_raw:
+                    continue
+
+                options = []
+                correct = 0
+                for idx, opt in enumerate(opts_raw):
+                    if opt.startswith('#'):
+                        correct = idx
+                        options.append(opt[1:].strip())
                     else:
                         options.append(opt)
-                    idx += 1
+
                 if len(options) >= 2:
                     qs.append({"q": q_text, "opts": options, "ans": correct})
-            return qs
+
+            if qs:
+                return qs
 
         qs = []
-        lines = [l.rstrip() for l in text.splitlines()]
+        lines = [clean_line(l) for l in text.splitlines()]
         i = 0
         while i < len(lines):
-            line = lines[i].strip()
+            line = lines[i]
             if not line:
-                i += 1; continue
+                i += 1
+                continue
 
-            # Ajratgich satrni o'tkazib yuborish
             if is_separator(line):
-                i += 1; continue
+                i += 1
+                continue
 
             is_q = bool(re.match(r'^\d+[\.\)]\s*.+', line)) or \
                    not re.match(r'^[a-zA-Z#][\.\)]\s*', line)
             if is_q:
                 q_text = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
-                if not q_text: i += 1; continue
+                if not q_text:
+                    i += 1
+                    continue
+
                 options, correct, opt_idx = [], 0, 0
                 i += 1
                 while i < len(lines):
-                    vline = lines[i].strip()
+                    vline = lines[i]
                     if not vline:
-                        i += 1; break
+                        i += 1
+                        break
 
-                    # Variant ichidagi ajratgich satrni o'tkazib yuborish
                     if is_separator(vline):
-                        i += 1; continue
+                        i += 1
+                        continue
 
                     if re.match(r'^\d+[\.\)]\s*.+', vline) and options:
                         break
+
                     m = re.match(r'^(#?)([a-zA-Z]?)[\.\)]\s*(.*)', vline)
                     if m:
                         is_correct = bool(m.group(1))
                         opt_text = m.group(3).strip()
                         if opt_text and not is_separator(opt_text):
-                            if is_correct: correct = opt_idx
-                            options.append(opt_text); opt_idx += 1
+                            if is_correct:
+                                correct = opt_idx
+                            options.append(opt_text)
+                            opt_idx += 1
                         i += 1
                     elif vline.startswith("#"):
                         clean = re.sub(r'^#[a-dA-D]?[\.\)]\s*', '', vline[1:]).strip() or vline[1:].strip()
                         if clean and not is_separator(clean):
-                            correct = opt_idx; options.append(clean); opt_idx += 1
+                            correct = opt_idx
+                            options.append(clean)
+                            opt_idx += 1
                         i += 1
                     else:
                         i += 1
+
                 if q_text and len(options) >= 2:
                     qs.append({"q": q_text, "opts": options, "ans": correct})
             else:
                 i += 1
+
         return qs
 
     # ============================================================
